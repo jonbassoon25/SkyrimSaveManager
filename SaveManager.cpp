@@ -149,8 +149,8 @@ public:
         try {
             saveNumber = CalcSaveNumber();
         } catch (...) {
-            LogDebugMsg("[SkyrimSaveManager] Error reading number of save:");
-            LogDebugMsg(fileName);
+            //LogDebugMsg("[SkyrimSaveManager] Error reading number of save:");
+            //LogDebugMsg(fileName);
             saveNumber = 0;
         }
         try {
@@ -164,8 +164,8 @@ public:
         try {
             chainId = CalcChainId();
         } catch (...) {
-            LogDebugMsg("[SkyrimSaveManager] Error reading Id of save:");
-            LogDebugMsg(fileName);
+            //LogDebugMsg("[SkyrimSaveManager] Error reading Id of save:");
+            //LogDebugMsg(fileName);
             chainId = 0; // Same as what Tod does when he can't read the save id
         }
     }
@@ -309,11 +309,11 @@ private:
         if (userVars.recycle) {
             RecycleFile(fileName + ".ess");
             RecycleFile(fileName + ".skse"); // silently fails if non-existent
+            RecycleFile(fileName + ".skse"); // silently fails if non-existent
         }
         else {
-            bool esmDeleted = DeleteFileA((fileName + ".ess").c_str());
+            DeleteFileA((fileName + ".ess").c_str());
             DeleteFileA((fileName + ".skse").c_str()); // silently fails if non-existent
-            if (!esmDeleted) LogDebugMsg("Failed to delete file: " + fileName);
         }
     }
 
