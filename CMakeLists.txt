@@ -21,7 +21,12 @@ if(DEFINED OUTPUT_FOLDER)
         TARGET "${PROJECT_NAME}"
         POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLL_FOLDER}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:${PROJECT_NAME}>"
+            "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/SaveManager.ini"
+            "${DLL_FOLDER}/SaveManager.ini"
         VERBATIM
     )
 endif()
