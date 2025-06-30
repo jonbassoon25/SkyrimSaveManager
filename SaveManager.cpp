@@ -26,25 +26,6 @@ std::string GetIniPath() {
     }
 }
 
-std::string GetSavePath() {
-    PWSTR path = nullptr;
-    std::string docPath = "C:\\";
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, NULL, &path))) {
-        int size_needed = WideCharToMultiByte(CP_UTF8, 0, path, -1, NULL, 0, NULL, NULL);
-        if (size_needed > 0) {
-            char* buffer = new char[size_needed];
-            WideCharToMultiByte(CP_UTF8, 0, path, -1, buffer, size_needed, NULL, NULL);
-            std::string strPath(buffer);
-            delete[] buffer;
-            docPath = strPath;
-        }
-        docPath += "\\My Games\\Skyrim Special Edition\\Saves";
-        CoTaskMemFree(path);
-    }
-    return docPath;
-}
-
-
 class IniReader {
 private:
     std::string iniPath;
@@ -78,7 +59,34 @@ public:
             return default_;
         }
     }
+
+    std::string ReadStr(const std::string& key, const std::string& default_) {
+        char buffer[255] = {};
+        GetPrivateProfileStringA(iniSection.c_str(), key.c_str(), default_.c_str(), buffer, sizeof(buffer), iniPath.c_str());
+        return std::string(buffer);
+    }
 };
+
+std::string GetSavePath() {
+    PWSTR path = nullptr;
+    std::string docPath = "C:\\";
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, NULL, &path))) {
+        int size_needed = WideCharToMultiByte(CP_UTF8, 0, path, -1, NULL, 0, NULL, NULL);
+        if (size_needed > 0) {
+            char* buffer = new char[size_needed];
+            WideCharToMultiByte(CP_UTF8, 0, path, -1, buffer, size_needed, NULL, NULL);
+            std::string strPath(buffer);
+            delete[] buffer;
+            docPath = strPath;
+        }
+        docPath += "\\My Games\\Skyrim Special Edition\\";
+        IniReader reader(docPath + "Skyrim.ini", "General");
+        docPath += reader.ReadStr("SLocalSavePath", "Saves");
+
+        CoTaskMemFree(path);
+    }
+    return docPath;
+}
 
 
 class SaveGame { // All save numbers are unique, but may be out of order by time
@@ -179,8 +187,6 @@ public:
 struct UserVars {
     float pollTime;
     bool recycle;
-    bool recycleOnStart;
-    int maxSize;
     int primaryBlockCount;
     int secondaryBlockCount;
     float desiredSecondarySpacing;
@@ -412,7 +418,21 @@ public:
             if (!tertiarySorted) LogDebugMsg("Tertiary block not sorted.");
             if (!overflowSorted) LogDebugMsg("Overflow not sorted.");
         }
-        return primarySorted && secondarySorted && tertiarySorted && overflowSorted;
+
+        // Check to see if blocks are ordered correctly
+        bool ps_order = ((primaryBlock.empty() || secondaryBlock.empty()) ||
+            (savesByNumber[primaryBlock.back()].GetTime() >= savesByNumber[secondaryBlock.front()].GetTime()));
+        bool st_order = ((secondaryBlock.empty() || tertiaryBlock.empty()) ||
+            (savesByNumber[secondaryBlock.back()].GetTime() >= savesByNumber[tertiaryBlock.front()].GetTime()));
+        bool to_order = ((tertiaryBlock.empty() || overflow.empty()) ||
+            (savesByNumber[tertiaryBlock.back()].GetTime() >= savesByNumber[overflow.front()].GetTime()));
+        if (log) {
+            if (!ps_order) LogDebugMsg("Primary-Secondary blocks not aligned.");
+            if (!st_order) LogDebugMsg("Secondary-Tertiary blocks not aligned.");
+            if (!to_order) LogDebugMsg("Tertiary-Overflow blocks not aligned.");
+        }
+
+        return primarySorted && secondarySorted && tertiarySorted && overflowSorted && ps_order && st_order && to_order;
     }
 };
 
@@ -432,8 +452,6 @@ public:
         // Load ini vars
         userVars.pollTime = reader.ReadFloat("fPollTime", 1.0);
         userVars.recycle = reader.ReadBool("bRecycle", "false");
-        userVars.recycleOnStart = reader.ReadBool("bRecycleOnStart", "true") || userVars.recycle;
-        userVars.maxSize = reader.ReadInt("iMaxSize", -1);
         userVars.primaryBlockCount = reader.ReadInt("iPrimaryBlockCount", 16);
         userVars.secondaryBlockCount = reader.ReadInt("iSecondaryBlockCount", 32);
         userVars.desiredSecondarySpacing = reader.ReadFloat("fDesiredSecondarySpacing", 0.5);
@@ -442,6 +460,16 @@ public:
         userVars.maxOverflow = reader.ReadInt("iMaxOverflow", -1);
         userVars.desiredOverflowSpacing = reader.ReadFloat("fDesiredOverflowSpacing", 4.0);
 
+        // Clamp user input
+        if (userVars.primaryBlockCount < 1) userVars.primaryBlockCount = 1;
+        if (userVars.secondaryBlockCount < 0) userVars.secondaryBlockCount = 0;
+        if (userVars.tertiaryBlockCount < 0) userVars.tertiaryBlockCount = 0;
+
+        reset();
+    }
+
+    void reset() {
+        saveChainsById.clear();
         // Find and group every game instance based on save Ids
         for (const auto& entry : std::filesystem::directory_iterator(GetSavePath())) {
             if (entry.is_regular_file() && entry.path().extension() == ".ess") {
@@ -466,19 +494,23 @@ public:
 
         // Check integrety of each game instance
         for (auto& gameInstancePair : saveChainsById) {
-            gameInstancePair.second.CheckBlockIntegrity();
+            assert(gameInstancePair.second.CheckBlockIntegrity());
         }
-        
     }
 
-
+    float GetPollTime() {
+        return userVars.pollTime;
+    }
 };
 
 
 void RunSaveManager() {
     SaveManager manager;
 
-
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds((int) (manager.GetPollTime() * 60)));
+        manager.reset();
+    }
 }
 
 SKSEPluginLoad(const SKSE::LoadInterface *skse) {
