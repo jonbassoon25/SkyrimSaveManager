@@ -6,7 +6,8 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/msvc_sink.h>
 #include <filesystem>
-#include <ShlObj.h>
+#include <shlobj.h>
+#include <shellapi.h>
 
 void LogDebugMsg(const std::string message) {
     RE::ConsoleLog::GetSingleton()->Print(message.c_str());
@@ -148,8 +149,8 @@ public:
             saveTime = CalcSaveTime(); // Possibly add option for using game time instead of irl time
         } catch (...) {
             // Possibly upgrade to reading metadata from the save as a backup
-            LogDebugMsg("[SkyrimSaveManager] Error reading time of save:");
-            LogDebugMsg(fileName);
+            //LogDebugMsg("[SkyrimSaveManager] Error reading time of save:");
+            //LogDebugMsg(fileName);
             saveTime = 0;
         }
         try {
@@ -192,6 +193,7 @@ struct UserVars {
 class SaveChain {
 private:
     UserVars userVars;
+    std::string saveDir;
 
     std::vector<UINT32> primaryBlock;
     std::vector<UINT32> secondaryBlock;
@@ -199,10 +201,133 @@ private:
     std::vector<UINT32> overflow;
     std::unordered_map<UINT32, SaveGame> savesByNumber;
 
-public:
-    SaveChain(UserVars& iniVariables) : userVars(iniVariables) {}
+    void CleanPrimaryBlock() {
+        // Move any overflow to the secondary block
+        while (primaryBlock.size() > userVars.primaryBlockCount) {
+            secondaryBlock.insert(secondaryBlock.begin(), primaryBlock.back());
+            primaryBlock.pop_back();
+        }
+    }
 
-    void addSave(SaveGame save) {
+    void CleanSecondaryBlock() {
+        // Optimize to match the desired time spacing
+        for (long long i = secondaryBlock.size() - 1; i >= 2 && secondaryBlock.size() > userVars.secondaryBlockCount; i--) {
+            // If the time between the next next save and this save is less than or equal to the desired spacing
+            if ((savesByNumber[secondaryBlock[i - 2]].GetTime() -
+                savesByNumber[secondaryBlock[i]].GetTime()) >=
+                userVars.desiredSecondarySpacing * 3600)
+            {
+                // It is save to delete the save inbetween them
+                DeleteSave(secondaryBlock, secondaryBlock[i]);
+                // Increment i to check the same next element for deletion
+                i++;
+            }
+        }
+
+        // Move any overflow to the tertiary block
+        while (secondaryBlock.size() > userVars.secondaryBlockCount) {
+            tertiaryBlock.insert(tertiaryBlock.begin(), secondaryBlock.back());
+            secondaryBlock.pop_back();
+        }
+    }
+
+    void CleanTertiaryBlock() {
+        // Optimize to match the desired time spacing
+        for (long long i = tertiaryBlock.size() - 1; i >= 2 && tertiaryBlock.size() > userVars.tertiaryBlockCount; i--) {
+            // If the time between the next next save and this save is less than or equal to the desired spacing
+            if ((savesByNumber[tertiaryBlock[i - 2]].GetTime() -
+                savesByNumber[tertiaryBlock[i]].GetTime()) >=
+                userVars.desiredTertiarySpacing * 3600)
+            {
+                // It is save to delete the save inbetween them
+                DeleteSave(tertiaryBlock, tertiaryBlock[i]);
+                // Increment i to check the same next element for deletion
+                i++;
+            }
+        }
+
+        // Move any overflow to the tertiary block
+        while (tertiaryBlock.size() > userVars.tertiaryBlockCount) {
+            overflow.insert(overflow.begin(), tertiaryBlock.back());
+            tertiaryBlock.pop_back();
+        }
+    }
+
+    void CleanOverflow() {
+        // Match the desired time spacing
+        for (long long i = overflow.size() - 1; i >= 2; i--) {
+            // If the time between the next next save and this save is less than or equal to the desired spacing
+            if ((savesByNumber[overflow[i - 2]].GetTime() -
+                savesByNumber[overflow[i]].GetTime()) >=
+                userVars.desiredOverflowSpacing * 3600)
+            {
+                // It is save to delete the save inbetween them
+                DeleteSave(overflow, overflow[i]);
+            }
+        }
+        // Delete any excess
+        while (userVars.maxOverflow >= 0 && overflow.size() > userVars.maxOverflow) {
+            UINT32 saveToDelete = overflow.back();
+            DeleteSave(overflow, saveToDelete);
+        }
+    }
+
+    bool RecycleFile(const std::string& filePathAnsi) {
+        // Convert string to wstring
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, filePathAnsi.c_str(), -1, nullptr, 0);
+        if (wlen == 0) return false;
+
+        std::wstring filePathW(wlen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, filePathAnsi.c_str(), -1, &filePathW[0], wlen);
+
+        std::wstring doubleNullPath = filePathW + L'\0';
+
+        SHFILEOPSTRUCTW fileOp = { 0 };
+        fileOp.wFunc = FO_DELETE;
+        fileOp.pFrom = doubleNullPath.c_str();
+        fileOp.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT;
+
+        int result = SHFileOperationW(&fileOp);
+        return (result == 0 && !fileOp.fAnyOperationsAborted);
+    }
+
+    void DeleteSave(std::vector<UINT32>& affectedBlock, UINT32 SaveNumber) {
+        // Collect the save to be deleted
+        SaveGame saveToRemove = std::move(savesByNumber[SaveNumber]);
+        // Remove the save from the SaveGame lookup map
+        savesByNumber.erase(SaveNumber);
+
+        // Remove the save number from it's block
+        auto saveIt = std::find(affectedBlock.begin(), affectedBlock.end(), SaveNumber);
+        assert(saveIt != affectedBlock.end());
+        affectedBlock.erase(saveIt);
+
+        LogDebugMsg("Deleting save " + saveToRemove.GetSaveName());
+
+        // Remove the save's associated files
+        std::string fileName = saveDir + "\\" + saveToRemove.GetSaveName();
+        if (userVars.recycle || true) {
+            RecycleFile(fileName + ".ess");
+            RecycleFile(fileName + ".skse"); // silently fails if non-existent
+        }
+        else {
+            DeleteFileA((fileName + ".esm").c_str());
+            DeleteFileA((fileName + ".skse").c_str()); // silently fails if non-existent
+        }
+    }
+
+public:
+    SaveChain(UserVars& iniVariables, const std::string& saveDir) : userVars(iniVariables), saveDir(saveDir) {}
+
+    void AddSave(SaveGame save) {
+        // Verify that the given save does not already exist
+        auto it = savesByNumber.find(save.GetNumber());
+        if (it != savesByNumber.end()) {
+            // This happens because of bugged savefiles.
+            // Could delete them, but ignoring them is safer.
+            return;
+        }
+
         savesByNumber.emplace(save.GetNumber(), save);
 
         // Find the correct block for the save to be in
@@ -242,26 +367,38 @@ public:
                 long long midIndex = (lowIndex + highIndex) / 2;
                 time_t midVal = savesByNumber[curBlockPtr->at(midIndex)].GetTime();
 
-                if (save.GetTime() > midVal) {
+                if (save.GetTime() < midVal) {
                     lowIndex = midIndex + 1;
                 }
                 else {
                     highIndex = midIndex - 1;
                 }
             }
-            size_t insertionIndex;
-            if (lowIndex >= (long long)curBlockPtr->size()) {
-                insertionIndex = curBlockPtr->size();
-            }
-            else {
-                insertionIndex = (save.GetTime() > savesByNumber[curBlockPtr->at(lowIndex)].GetTime()) ? lowIndex + 1 : lowIndex;
-            }
-            curBlockPtr->insert(curBlockPtr->begin() + insertionIndex, save.GetNumber());
+            curBlockPtr->insert(curBlockPtr->begin() + lowIndex, save.GetNumber());
         }
-        
+
+        //CheckBlockIntegrity(true);
+        UpdateSaveBlocks();
+    }
+
+    void UpdateSaveBlocks() {
+        assert(CheckBlockIntegrity());
+
+        if (primaryBlock.size() > userVars.primaryBlockCount) {
+            CleanPrimaryBlock();
+        }
+        if (secondaryBlock.size() > userVars.secondaryBlockCount) {
+            CleanSecondaryBlock();
+        }
+        if (tertiaryBlock.size() > userVars.tertiaryBlockCount) {
+            CleanTertiaryBlock();
+        }
+        if (overflow.size() > userVars.maxOverflow) {
+            CleanOverflow();
+        }
     }
     
-    bool checkBlockIntegrity(bool log = false) {
+    bool CheckBlockIntegrity(bool log = false) {
         // Check to see if all blocks are sorted correctly
         bool primarySorted = std::is_sorted(primaryBlock.begin(), primaryBlock.end(), [this](UINT32 a, UINT32 b) {
             return savesByNumber[a].GetTime() > savesByNumber[b].GetTime();
@@ -316,18 +453,18 @@ public:
             if (entry.is_regular_file() && entry.path().extension() == ".ess") {
                 // SKSE save mirrors are assumed to not exist without a .ess counterpart
                 // If the first 4 letters of the filename are not "Save" then move on (Autosave / Quicksave)
-                std::string saveName = entry.path().filename().string();
+                std::string saveName = entry.path().stem().string();
                 if (saveName.length() <= 4 || saveName.substr(0, 4) != "Save") continue;
                 
                 SaveGame curSave(saveName);
                 auto found = saveChainsById.find(curSave.GetChainId());
                 if (found != saveChainsById.end()) {
                     SaveChain& chain = found->second;
-                    chain.addSave(std::move(curSave));
+                    chain.AddSave(std::move(curSave));
                 } else {
-                    SaveChain chain(userVars);
+                    SaveChain chain(userVars, GetSavePath());
                     UINT32 chainId = curSave.GetChainId();
-                    chain.addSave(std::move(curSave));
+                    chain.AddSave(std::move(curSave));
                     saveChainsById.emplace(chainId, std::move(chain));
                 }
             }
@@ -335,7 +472,7 @@ public:
 
         // Check integrety of each game instance
         for (auto& gameInstancePair : saveChainsById) {
-            gameInstancePair.second.checkBlockIntegrity();
+            gameInstancePair.second.CheckBlockIntegrity();
         }
         
     }
