@@ -311,8 +311,9 @@ private:
             RecycleFile(fileName + ".skse"); // silently fails if non-existent
         }
         else {
-            DeleteFileA((fileName + ".esm").c_str());
+            bool esmDeleted = DeleteFileA((fileName + ".ess").c_str());
             DeleteFileA((fileName + ".skse").c_str()); // silently fails if non-existent
+            if (!esmDeleted) LogDebugMsg("Failed to delete file: " + fileName);
         }
     }
 
