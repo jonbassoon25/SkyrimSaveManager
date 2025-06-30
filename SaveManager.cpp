@@ -103,7 +103,7 @@ private:
         // Timestamp is the 7th entry in the format YYYYMMDDHHMMSS
         std::tm saveDate = { 0 };
         char entryCount = 1;
-        for (int i = 0; i < saveName.length(); i++) {
+        for (size_t i = 0; i < saveName.length(); i++) {
             if (entryCount == 7) {
                 saveDate.tm_year = std::stoi(saveName.substr(i, 4)) - 1900;
                 saveDate.tm_mon = std::stoi(saveName.substr(i + 4, 2)) - 1;
@@ -211,16 +211,14 @@ private:
 
     void CleanSecondaryBlock() {
         // Optimize to match the desired time spacing
-        for (long long i = secondaryBlock.size() - 1; i >= 2 && secondaryBlock.size() > userVars.secondaryBlockCount; i--) {
+        for (long long i = secondaryBlock.size() - 1; i >= 2; i--) {
             // If the time between the next next save and this save is less than or equal to the desired spacing
             if ((savesByNumber[secondaryBlock[i - 2]].GetTime() -
-                savesByNumber[secondaryBlock[i]].GetTime()) >=
+                savesByNumber[secondaryBlock[i]].GetTime()) <
                 userVars.desiredSecondarySpacing * 3600)
             {
                 // It is save to delete the save inbetween them
-                DeleteSave(secondaryBlock, secondaryBlock[i]);
-                // Increment i to check the same next element for deletion
-                i++;
+                DeleteSave(secondaryBlock, secondaryBlock[i - 1]);
             }
         }
 
@@ -233,16 +231,14 @@ private:
 
     void CleanTertiaryBlock() {
         // Optimize to match the desired time spacing
-        for (long long i = tertiaryBlock.size() - 1; i >= 2 && tertiaryBlock.size() > userVars.tertiaryBlockCount; i--) {
+        for (long long i = tertiaryBlock.size() - 1; i >= 2; i--) {
             // If the time between the next next save and this save is less than or equal to the desired spacing
             if ((savesByNumber[tertiaryBlock[i - 2]].GetTime() -
-                savesByNumber[tertiaryBlock[i]].GetTime()) >=
+                savesByNumber[tertiaryBlock[i]].GetTime()) <
                 userVars.desiredTertiarySpacing * 3600)
             {
                 // It is save to delete the save inbetween them
-                DeleteSave(tertiaryBlock, tertiaryBlock[i]);
-                // Increment i to check the same next element for deletion
-                i++;
+                DeleteSave(tertiaryBlock, tertiaryBlock[i - 1]);
             }
         }
 
@@ -258,11 +254,11 @@ private:
         for (long long i = overflow.size() - 1; i >= 2; i--) {
             // If the time between the next next save and this save is less than or equal to the desired spacing
             if ((savesByNumber[overflow[i - 2]].GetTime() -
-                savesByNumber[overflow[i]].GetTime()) >=
+                savesByNumber[overflow[i]].GetTime()) <
                 userVars.desiredOverflowSpacing * 3600)
             {
                 // It is save to delete the save inbetween them
-                DeleteSave(overflow, overflow[i]);
+                DeleteSave(overflow, overflow[i - 1]);
             }
         }
         // Delete any excess
@@ -302,11 +298,9 @@ private:
         assert(saveIt != affectedBlock.end());
         affectedBlock.erase(saveIt);
 
-        LogDebugMsg("Deleting save " + saveToRemove.GetSaveName());
-
         // Remove the save's associated files
         std::string fileName = saveDir + "\\" + saveToRemove.GetSaveName();
-        if (userVars.recycle || true) {
+        if (userVars.recycle) {
             RecycleFile(fileName + ".ess");
             RecycleFile(fileName + ".skse"); // silently fails if non-existent
         }
