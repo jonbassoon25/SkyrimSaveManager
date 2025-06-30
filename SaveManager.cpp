@@ -132,6 +132,9 @@ private:
     }
 
 public:
+    // Needs to compile with this so that unordered_map[SaveId] can be used in checks
+    SaveGame() { throw std::out_of_range("Cannot construct a SaveGame without parameters"); }
+
     SaveGame(const std::string& fileName) : saveName(fileName) {
         // Try to stop Tod's intelligence from screwing over the plugin
         try {
@@ -166,6 +169,9 @@ public:
     UINT32 GetNumber() {
         return saveNumber;
     }
+    time_t GetTime() {
+        return saveTime;
+    }
 };
 
 // Documentation on user variables can be found in SaveManager.ini
@@ -187,17 +193,95 @@ class SaveChain {
 private:
     UserVars userVars;
 
-    std::list<UINT32> primaryBlock;
-    std::list<UINT32> secondaryBlock;
-    std::list<UINT32> tertiaryBlock;
-    std::list<UINT32> overflow;
+    std::vector<UINT32> primaryBlock;
+    std::vector<UINT32> secondaryBlock;
+    std::vector<UINT32> tertiaryBlock;
+    std::vector<UINT32> overflow;
     std::unordered_map<UINT32, SaveGame> savesByNumber;
 
 public:
     SaveChain(UserVars& iniVariables) : userVars(iniVariables) {}
 
     void addSave(SaveGame save) {
-        savesByNumber.emplace(save.GetNumber(), std::move(save));
+        savesByNumber.emplace(save.GetNumber(), save);
+
+        // Find the correct block for the save to be in
+        std::vector<UINT32>* curBlockPtr = nullptr;
+        if (primaryBlock.size() < userVars.primaryBlockCount ||
+            save.GetTime() > savesByNumber[primaryBlock.back()].GetTime())
+        {
+            curBlockPtr = &primaryBlock;
+        }
+        else if (userVars.secondaryBlockCount > 0 &&
+            (secondaryBlock.size() < userVars.secondaryBlockCount ||
+             save.GetTime() > savesByNumber[secondaryBlock.back()].GetTime()))
+        {
+            curBlockPtr = &secondaryBlock;
+        }
+        else if (userVars.tertiaryBlockCount > 0 &&
+            (tertiaryBlock.size() < userVars.tertiaryBlockCount ||
+             save.GetTime() > savesByNumber[tertiaryBlock.back()].GetTime()))
+        {
+            curBlockPtr = &tertiaryBlock;
+        }
+        else {
+            curBlockPtr = &overflow;
+        }
+
+        // Place the save in the correct spot inside it's block
+
+        // If the block is empty, it will be sorted with the 1 item
+        if (curBlockPtr->empty()) {
+            curBlockPtr->emplace_back(save.GetNumber());
+        }
+        else {
+            // Binary insertion
+            long long lowIndex = 0;
+            long long highIndex = curBlockPtr->size() - 1;
+            while (lowIndex <= highIndex) {
+                long long midIndex = (lowIndex + highIndex) / 2;
+                time_t midVal = savesByNumber[curBlockPtr->at(midIndex)].GetTime();
+
+                if (save.GetTime() > midVal) {
+                    lowIndex = midIndex + 1;
+                }
+                else {
+                    highIndex = midIndex - 1;
+                }
+            }
+            size_t insertionIndex;
+            if (lowIndex >= (long long)curBlockPtr->size()) {
+                insertionIndex = curBlockPtr->size();
+            }
+            else {
+                insertionIndex = (save.GetTime() > savesByNumber[curBlockPtr->at(lowIndex)].GetTime()) ? lowIndex + 1 : lowIndex;
+            }
+            curBlockPtr->insert(curBlockPtr->begin() + insertionIndex, save.GetNumber());
+        }
+        
+    }
+    
+    bool checkBlockIntegrity(bool log = false) {
+        // Check to see if all blocks are sorted correctly
+        bool primarySorted = std::is_sorted(primaryBlock.begin(), primaryBlock.end(), [this](UINT32 a, UINT32 b) {
+            return savesByNumber[a].GetTime() > savesByNumber[b].GetTime();
+        });
+        bool secondarySorted = std::is_sorted(secondaryBlock.begin(), secondaryBlock.end(), [this](UINT32 a, UINT32 b) {
+            return savesByNumber[a].GetTime() > savesByNumber[b].GetTime();
+        });
+        bool tertiarySorted = std::is_sorted(tertiaryBlock.begin(), tertiaryBlock.end(), [this](UINT32 a, UINT32 b) {
+            return savesByNumber[a].GetTime() > savesByNumber[b].GetTime();
+        });
+        bool overflowSorted = std::is_sorted(overflow.begin(), overflow.end(), [this](UINT32 a, UINT32 b) {
+            return savesByNumber[a].GetTime() > savesByNumber[b].GetTime();
+        });
+        if (log) {
+            if (!primarySorted) LogDebugMsg("Primary block not sorted.");
+            if (!secondarySorted) LogDebugMsg("Secondary block not sorted.");
+            if (!tertiarySorted) LogDebugMsg("Tertiary block not sorted.");
+            if (!overflowSorted) LogDebugMsg("Overflow not sorted.");
+        }
+        return primarySorted && secondarySorted && tertiarySorted && overflowSorted;
     }
 };
 
@@ -228,8 +312,6 @@ public:
         userVars.desiredOverflowSpacing = reader.ReadFloat("fDesiredOverflowSpacing", 4.0);
 
         // Find and group every game instance based on save Ids
-        unsigned long long saveCount = 0;
-        unsigned gameCount = 0;
         for (const auto& entry : std::filesystem::directory_iterator(GetSavePath())) {
             if (entry.is_regular_file() && entry.path().extension() == ".ess") {
                 // SKSE save mirrors are assumed to not exist without a .ess counterpart
@@ -237,14 +319,12 @@ public:
                 std::string saveName = entry.path().filename().string();
                 if (saveName.length() <= 4 || saveName.substr(0, 4) != "Save") continue;
                 
-                saveCount++;
                 SaveGame curSave(saveName);
                 auto found = saveChainsById.find(curSave.GetChainId());
                 if (found != saveChainsById.end()) {
                     SaveChain& chain = found->second;
                     chain.addSave(std::move(curSave));
                 } else {
-                    gameCount++;
                     SaveChain chain(userVars);
                     UINT32 chainId = curSave.GetChainId();
                     chain.addSave(std::move(curSave));
@@ -252,7 +332,12 @@ public:
                 }
             }
         }
-        LogDebugMsg(std::to_string(saveCount) + " saves detected from " + std::to_string(gameCount) + " games.");
+
+        // Check integrety of each game instance
+        for (auto& gameInstancePair : saveChainsById) {
+            gameInstancePair.second.checkBlockIntegrity();
+        }
+        
     }
 
 
