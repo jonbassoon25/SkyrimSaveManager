@@ -1,7 +1,7 @@
 # Based off template from https://github.com/SkyrimScripting/SKSE_Template_HelloWorld
 
 cmake_minimum_required(VERSION 3.21)
-project(SkyrimSaveManager VERSION 0.1.0 LANGUAGES CXX)
+project(SkyrimSaveManager VERSION 1.0.0 LANGUAGES CXX)
 
 set(OUTPUT_FOLDER "${CMAKE_SOURCE_DIR}/Distro/SkyrimSaveManager")
 
