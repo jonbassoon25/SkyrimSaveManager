@@ -309,7 +309,6 @@ private:
         if (userVars.recycle) {
             RecycleFile(fileName + ".ess");
             RecycleFile(fileName + ".skse"); // silently fails if non-existent
-            RecycleFile(fileName + ".skse"); // silently fails if non-existent
         }
         else {
             DeleteFileA((fileName + ".ess").c_str());
