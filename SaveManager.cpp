@@ -542,7 +542,6 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     // Start subprocess for save management after other mods are loaded
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* message) {
         if (message->type == SKSE::MessagingInterface::kDataLoaded) {
-            LogDebugMsg("Save Path: " + GetSavePath());
             std::thread task(RunSaveManager);
             task.detach();
         }
