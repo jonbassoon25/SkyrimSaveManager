@@ -1,6 +1,8 @@
 Ever looked at the 20+GB folder of Skyrim saves from your 80hr playthrough and thought to yourself: there's got to be a better way? Now there is.
 Unlike other managers that free space by deleting all your old saves, SSM allows you to set custom time intervals between them—maintaining small save folders while protecting against Todd's "perfect game".
 
+This mod is avalible on nexus mods at: https://www.nexusmods.com/skyrimspecialedition/mods/153931
+
 Notes:
     Because Tod designed his game to be perfect, any saves created in (modded) zones with underscores in their name
     will not work and will break any subsequent saves.
