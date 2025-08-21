@@ -86,9 +86,25 @@ std::string GetDocPath() {
     return docPath;
 }
 
+// This needs to be something that no sane indiviual would
+// use as their local save path
+#define undefinedPathStr "Undefined Local Path: Fµ¢k y0µ"
+
 std::string GetLocalSavePath(std::string docPath) {
-    IniReader reader(docPath + "Skyrim.ini", "General");
-    return reader.ReadStr("SLocalSavePath", "Saves");
+    std::string localSavePath(undefinedPathStr);
+    if (std::filesystem::exists(docPath + "SkyrimCustom.ini")) {
+        IniReader reader(docPath + "SkyrimCustom.ini", "General");
+        localSavePath = reader.ReadStr("SLocalSavePath", undefinedPathStr);
+    }
+    if (localSavePath == undefinedPathStr && std::filesystem::exists(docPath + "Skyrim.ini")) {
+        IniReader reader(docPath + "Skyrim.ini", "General");
+        localSavePath = reader.ReadStr("SLocalSavePath", undefinedPathStr);
+    }
+    if (localSavePath == undefinedPathStr) {
+        localSavePath = "Saves/";
+    }
+    
+    return localSavePath;
 }
 
 std::string GetSavePath() {
