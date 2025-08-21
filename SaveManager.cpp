@@ -67,7 +67,7 @@ public:
     }
 };
 
-std::string GetSavePath() {
+std::string GetDocPath() {
     PWSTR path = nullptr;
     std::string docPath = "C:\\";
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, NULL, &path))) {
@@ -80,14 +80,21 @@ std::string GetSavePath() {
             docPath = strPath;
         }
         docPath += "\\My Games\\Skyrim Special Edition\\";
-        IniReader reader(docPath + "Skyrim.ini", "General");
-        docPath += reader.ReadStr("SLocalSavePath", "Saves");
 
         CoTaskMemFree(path);
     }
     return docPath;
 }
 
+std::string GetLocalSavePath(std::string docPath) {
+    IniReader reader(docPath + "Skyrim.ini", "General");
+    return reader.ReadStr("SLocalSavePath", "Saves");
+}
+
+std::string GetSavePath() {
+    std::string docPath = GetDocPath();
+    return docPath + GetLocalSavePath(docPath);
+}
 
 class SaveGame { // All save numbers are unique, but may be out of order by time
 private:
@@ -274,13 +281,13 @@ private:
         }
     }
 
-    bool RecycleFile(const std::string& filePathAnsi) {
+    bool RecycleFile(const std::string& filePath) {
         // Convert string to wstring
-        int wlen = MultiByteToWideChar(CP_UTF8, 0, filePathAnsi.c_str(), -1, nullptr, 0);
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, filePath.c_str(), -1, nullptr, 0);
         if (wlen == 0) return false;
 
         std::wstring filePathW(wlen, 0);
-        MultiByteToWideChar(CP_UTF8, 0, filePathAnsi.c_str(), -1, &filePathW[0], wlen);
+        MultiByteToWideChar(CP_UTF8, 0, filePath.c_str(), -1, &filePathW[0], wlen);
 
         std::wstring doubleNullPath = filePathW + L'\0';
 
@@ -308,7 +315,6 @@ private:
         std::string fileName = saveDir + "\\" + saveToRemove.GetSaveName();
         if (userVars.recycle) {
             RecycleFile(fileName + ".ess");
-            RecycleFile(fileName + ".skse"); // silently fails if non-existent
             RecycleFile(fileName + ".skse"); // silently fails if non-existent
         }
         else {
@@ -520,6 +526,7 @@ SKSEPluginLoad(const SKSE::LoadInterface *skse) {
     // Start subprocess for save management after other mods are loaded
     SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* message) {
         if (message->type == SKSE::MessagingInterface::kDataLoaded) {
+            LogDebugMsg("Save Path: " + GetSavePath());
             std::thread task(RunSaveManager);
             task.detach();
         }
