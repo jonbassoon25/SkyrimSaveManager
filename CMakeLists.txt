@@ -1,13 +1,25 @@
 # Based off template from https://github.com/SkyrimScripting/SKSE_Template_HelloWorld
 
 cmake_minimum_required(VERSION 3.21)
-project(SkyrimSaveManager VERSION 1.0.0 LANGUAGES CXX)
+project(SkyrimSaveManager VERSION 1.1.0 LANGUAGES CXX)
 
 set(OUTPUT_FOLDER "${CMAKE_SOURCE_DIR}/Distro/SkyrimSaveManager")
 
-# Setup your SKSE plugin as an SKSE plugin!
+set(headers 
+    "${CMAKE_SOURCE_DIR}/include/IniReader.h"
+    "${CMAKE_SOURCE_DIR}/include/SaveManager.h"
+)
+
+set (srcs
+    "${CMAKE_SOURCE_DIR}/src/IniReader.cpp" 
+    "${CMAKE_SOURCE_DIR}/src/SaveManager.cpp"
+    "${CMAKE_SOURCE_DIR}/src/PluginLoad.cpp"
+)
+
+
+# Setup the SKSE plugin
 find_package(CommonLibSSE CONFIG REQUIRED)
-add_commonlibsse_plugin(${PROJECT_NAME} SOURCES SaveManager.cpp)
+add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${srcs})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_precompile_headers(${PROJECT_NAME} PRIVATE PCH.h)
 
