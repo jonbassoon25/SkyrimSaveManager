@@ -1,10 +1,7 @@
 #include <Windows.h>
 
 IniReader::IniReader(const std::string& path, const std::string& iniSection)
-{
-	this->iniPath = path;
-	this->iniSection = iniSection;
-}
+	: iniPath(path), iniSection(iniSection) {}
 
 /*
 Reads the integer value of key from the file and section of this reader. 
@@ -40,7 +37,7 @@ double IniReader::ReadDouble(const std::string& key, double default_)
 	try {
 		return std::stod(std::string(buffer));
 	}
-	catch (const std::exception&) {
+	catch (...) {
 		return default_;
 	}
 }
