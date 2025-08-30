@@ -26,16 +26,16 @@ bool IniReader::ReadBool(const std::string& key, bool default_) const
 }
 
 /*
-Reads the double value of key from the file and section of this reader.
+Reads the float value of key from the file and section of this reader.
 If no value is found, the default is returned.
 */
-double IniReader::ReadDouble(const std::string& key, double default_) const
+float IniReader::ReadFloat(const std::string& key, float default_) const
 {
-	char buffer[32] = {};
+	char buffer[24] = {};
 	GetPrivateProfileStringA(iniSection.c_str(), key.c_str(), std::to_string(default_).c_str(), buffer, sizeof(buffer), iniPath.c_str());
 
 	try {
-		return std::stod(std::string(buffer));
+		return std::stof(std::string(buffer));
 	}
 	catch (...) {
 		return default_;
