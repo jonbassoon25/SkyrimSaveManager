@@ -7,12 +7,16 @@ set(OUTPUT_FOLDER "${CMAKE_SOURCE_DIR}/Distro/SkyrimSaveManager")
 
 set(headers 
     "${CMAKE_SOURCE_DIR}/include/IniReader.h"
-    "${CMAKE_SOURCE_DIR}/include/SaveManager.h"
+    "${CMAKE_SOURCE_DIR}/include/SaveGame.h"
+    "${CMAKE_SOURCE_DIR}/include/GameManager.h"
+    "${CMAKE_SOURCE_DIR}/include/MainManager.h"
 )
 
 set (srcs
     "${CMAKE_SOURCE_DIR}/src/IniReader.cpp" 
-    "${CMAKE_SOURCE_DIR}/src/SaveManager.cpp"
+    "${CMAKE_SOURCE_DIR}/src/SaveGame.cpp"
+    "${CMAKE_SOURCE_DIR}/src/GameManager.cpp"
+    "${CMAKE_SOURCE_DIR}/src/MainManager.cpp"
     "${CMAKE_SOURCE_DIR}/src/PluginLoad.cpp"
 )
 
