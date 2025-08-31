@@ -17,7 +17,7 @@ set (srcs
     "${CMAKE_SOURCE_DIR}/src/SaveGame.cpp"
     "${CMAKE_SOURCE_DIR}/src/GameManager.cpp"
     "${CMAKE_SOURCE_DIR}/src/MainManager.cpp"
-    "${CMAKE_SOURCE_DIR}/src/PluginLoad.cpp"
+    "${CMAKE_SOURCE_DIR}/src/Main.cpp"
 )
 
 
