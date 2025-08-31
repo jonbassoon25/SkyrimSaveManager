@@ -6,10 +6,10 @@ private:
 	UserVars userVariables;
 	std::unordered_map<UINT32, GameManager> GamesById;
 
-	std::string CalcIniPath() const;
-	std::string CalcDocumentsPath() const;
-	std::string CalcLocalSavePath() const;
-	std::string CalcSavePath() const;
+	static std::string CalcIniPath();
+	static std::string CalcDocumentsPath();
+	static std::string CalcLocalSavePath(const std::string& documentsPath);
+	static std::string CalcSavePath();
 
 
 public:
