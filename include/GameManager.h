@@ -27,12 +27,11 @@ private:
     std::vector<SaveGame> overflow;
 
     void RecycleFile(const std::string& path) const;
-    void DeleteFile(const std::string& path) const;
-    void DeleteSave(const std::vector<SaveGame>& affectedBlock, size_t index);
+    void DeleteSave(std::vector<SaveGame>& affectedBlock, size_t index);
 
 public:
     GameManager(const UserVars& userVariables, const std::string& saveDirectory);
     
-    void AddSave(const SaveGame& save);
+    void AddSave(SaveGame save);
     bool CheckBlockIntegrity(bool log) const;
 };
