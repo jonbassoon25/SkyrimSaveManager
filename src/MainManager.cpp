@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <shlobj.h>
+#include <iomanip>
 
 #define iniName "SaveManager.ini"
 #define undefinedLocalPath "___UNDEFINED_LOCAL_PATH___"
@@ -103,7 +104,42 @@ void MainManager::Refresh()
 
 void MainManager::Reset()
 {
+    GamesById.clear();
 
+    // Find and group every game instance based on game Ids
+    std::string saveDirectory = CalcSavePath();
+    for (const auto& entry : std::filesystem::directory_iterator(saveDirectory))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".ess")
+        {
+            // SKSE save mirrors are assumed to not exist without a .ess counterpart
+            // If the first 4 letters of the filename are not "Save" then move on (Autosave / Quicksave)
+            std::string saveName = entry.path().stem().string();
+            if (saveName.length() <= 4 || saveName.substr(0, 4) != "Save") continue;
+
+            SaveGame currentSave(saveName);
+            auto gameHashPtr = GamesById.find(currentSave.GetGameId());
+            if (gameHashPtr != GamesById.end())
+            {
+                GameManager& manager = gameHashPtr->second;
+                manager.AddSave(std::move(currentSave));
+            }
+            else {
+                GameManager newManager(userVariables, saveDirectory);
+                UINT32 gameId = currentSave.GetGameId();
+                newManager.AddSave(std::move(currentSave));
+                GamesById.emplace(gameId, std::move(newManager));
+            }
+        }
+    }
+
+    // Check integrity of each game instance
+    for (auto& gameInstancePair : GamesById) {
+        if (!gameInstancePair.second.CheckBlockIntegrity(false))
+        {
+            throw std::runtime_error(std::format("Problem with the integrity of blocks after reset for game with id {:X}", gameInstancePair.first));
+        }
+    }
 }
 
 float MainManager::GetPollTime()
