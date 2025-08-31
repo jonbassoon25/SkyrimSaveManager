@@ -12,7 +12,7 @@ struct UserVars {
     float desiredTertiarySpacing;
     int maxOverflow;
     float desiredOverflowSpacing;
-};
+}; // End UserVars
 
 
 class GameManager
